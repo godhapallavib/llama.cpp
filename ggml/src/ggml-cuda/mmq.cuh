@@ -892,6 +892,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
     constexpr ggml_cuda_mmq_load_tiles_t load_tiles = ggml_cuda_mmq_get_load_tiles<type, J, fallback, prec_src1>();
     constexpr ggml_cuda_mmq_vec_dot_t    vec_dot    = ggml_cuda_mmq_get_vec_dot<type, J, fallback, prec_src1>();
     constexpr ggml_cuda_mmq_write_back_t write_back = ggml_cuda_mmq_get_write_back<type, J, fallback, prec_src1>();
+    constexpr bool mma = ggml_cuda_mmq_get_config(type, J, fallback, prec_src1).use_mma_data_layout();
 
     extern __shared__ int data_mul_mat_q[];
     int * tile_y = data_mul_mat_q + J;
@@ -914,7 +915,16 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
     constexpr int sz = sizeof(block_q8_1_mmq) / sizeof(int);
 
     for (int kb0 = kb0_start; kb0 < kb0_stop; kb0 += blocks_per_iter) {
-        load_tiles(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
+        //load_tiles(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
+         if constexpr (mma && type == GGML_TYPE_Q4_K){
+            ggml_cuda_mmq_load_tiles_q4_K<type, J, fallback>(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
+        }
+        else if constexpr (mma && type == GGML_TYPE_Q6_K){
+            ggml_cuda_mmq_load_tiles_q6_K<type, J, fallback>(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
+        }
+        else{
+            load_tiles(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
+        }
         {
             const int * by0 = y + ncols_y * (kb0 * qk / ne_block) * sz;
 #pragma unroll
@@ -927,7 +937,16 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
 
         __syncthreads();
 
-        vec_dot(tile_x, tile_y, sum, 0);
+        // vec_dot(tile_x, tile_y, sum, 0);
+        if constexpr (mma && type == GGML_TYPE_Q4_K){
+            ggml_cuda_mmq_vec_dot_q8_1_q8_1_mma<type, J, fallback>(tile_x, tile_y, sum, 0);
+        }
+        else if constexpr (mma && type == GGML_TYPE_Q6_K){
+            ggml_cuda_mmq_vec_dot_q6_K_q8_1_mma<type, J, fallback>(tile_x, tile_y, sum, 0);
+        }
+        else{
+            vec_dot(tile_x, tile_y, sum, 0);
+        }
 
         __syncthreads();
 
@@ -943,16 +962,36 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
 
         __syncthreads();
 
-        vec_dot(tile_x, tile_y, sum, MMQ_TILE_NE_K);
+        // vec_dot(tile_x, tile_y, sum, MMQ_TILE_NE_K);
+        if constexpr (mma && type == GGML_TYPE_Q4_K) {
+            ggml_cuda_mmq_vec_dot_q8_1_q8_1_mma<type, J, fallback>(tile_x, tile_y, sum, MMQ_TILE_NE_K);
+        } else if constexpr (mma && type == GGML_TYPE_Q6_K) {
+            ggml_cuda_mmq_vec_dot_q6_K_q8_1_mma<type, J, fallback>(tile_x, tile_y, sum, MMQ_TILE_NE_K);
+        } else {
+            vec_dot(tile_x, tile_y, sum, MMQ_TILE_NE_K);
+        }
 
         __syncthreads();
     }
 
-    if (fixup) {
-        write_back(sum, ids_dst, tmp_fixup + blockIdx.x*(J*I), y_scale, I, I, J);
-    } else {
-        write_back(sum, ids_dst, dst, y_scale, stride_col_dst, tile_x_max_i, tile_y_max_j);
+    if constexpr (mma && (type == GGML_TYPE_Q4_K || type == GGML_TYPE_Q6_K)){
+        if(fixup){
+            ggml_cuda_mmq_write_back_mma<type, J, fallback>(sum, ids_dst, tmp_fixup + blockIdx.x*(J*I), y_scale, I, I, J);
+        }
+        else{
+            ggml_cuda_mmq_write_back_mma<type, J, fallback>(sum, ids_dst, dst, y_scale, stride_col_dst, tile_x_max_i, tile_y_max_j);
+        }
     }
+    else{
+        if (fixup) {
+            write_back(sum, ids_dst, tmp_fixup + blockIdx.x*(J*I), y_scale, I, I, J);
+        } 
+        else {
+            write_back(sum, ids_dst, dst, y_scale, stride_col_dst, tile_x_max_i, tile_y_max_j);
+        }
+    }
+
+    
 }
 
 
