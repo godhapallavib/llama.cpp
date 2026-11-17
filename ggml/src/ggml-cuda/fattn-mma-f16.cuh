@@ -449,7 +449,11 @@ static __device__ __forceinline__ void flash_attn_ext_f16_load_tile(
         // 4: max  4*16= 64 bytes,  32 half
         // 5: max  2*16= 32 bytes,  16 half
         // 6: max  1*16= 16 bytes,   8 half
-        ggml_cuda_unroll<6>{}(load);
+        // ggml_cuda_unroll<6>{}(load);
+#pragma unroll 
+        for(int i = 5; i >= 0; --i){
+            load(i);
+        }
     } else {
         const half2 zero[4] = {{0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 0.0f}};
         auto load = [&] __device__ (const int n) {
@@ -491,7 +495,11 @@ static __device__ __forceinline__ void flash_attn_ext_f16_load_tile(
         // 4: max  4*16= 64 bytes,  32 half
         // 5: max  2*16= 32 bytes,  16 half
         // 6: max  1*16= 16 bytes,   8 half
-        ggml_cuda_unroll<6>{}(load);
+        // ggml_cuda_unroll<6>{}(load);
+#pragma unroll
+        for(int i = 5; i >= 0; --i){
+            load(i);
+        }
     }
 }
 

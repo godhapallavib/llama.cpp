@@ -802,9 +802,16 @@ namespace ggml_cuda_mma {
 #ifdef TURING_MMA_AVAILABLE
         int * xi = (int *) t.x;
         const int * xs = (const int *) xs0 + (threadIdx.x % t.I) * stride + ((threadIdx.x / t.I) * (t.J / 2)) % t.J;
-        asm volatile("ldmatrix.sync.aligned.m8n8.x2.b16 {%0, %1}, [%2];"
-            : "=r"(xi[0]), "=r"(xi[1])
-            : "l"(xs));
+        #ifdef GGML_FAIAL_PLAIN_LDMATRIX
+            if (threadIdx.x < 16) {
+                xi[0] = xs[0] + xs[2];
+                xi[1] = xs[1] + xs[3];
+            }
+        #else 
+            asm volatile("ldmatrix.sync.aligned.m8n8.x2.b16 {%0, %1}, [%2];"
+                : "=r"(xi[0]), "=r"(xi[1])
+                : "l"(xs));
+        #endif
 #else
         GGML_UNUSED_VARS(t, xs0, stride);
         NO_DEVICE_CODE;
@@ -817,9 +824,16 @@ namespace ggml_cuda_mma {
 #ifdef TURING_MMA_AVAILABLE
         int * xi = (int *) t.x;
         const int * xs = (const int *) xs0 + (threadIdx.x % t.I) * stride;
-        asm volatile("ldmatrix.sync.aligned.m8n8.x2.b16 {%0, %1}, [%2];"
-            : "=r"(xi[0]), "=r"(xi[1])
-            : "l"(xs));
+        #ifdef GGML_FAIAL_PLAIN_LDMATRIX
+            if (threadIdx.x < 16) {
+                xi[0] = xs[0] + xs[2];
+                xi[1] = xs[1] + xs[3];
+            }
+        #else
+            asm volatile("ldmatrix.sync.aligned.m8n8.x2.b16 {%0, %1}, [%2];"
+                : "=r"(xi[0]), "=r"(xi[1])
+                : "l"(xs));
+        #endif
 #elif defined(AMD_WMMA_AVAILABLE)
 #ifdef RDNA3
         static_assert(dl == DATA_LAYOUT_I_MAJOR_MIRRORED, "bad data layout");
@@ -846,9 +860,16 @@ namespace ggml_cuda_mma {
 #if defined(TURING_MMA_AVAILABLE)
         int * xi = (int * ) t.x;
         const int * xs = (const int *) xs0 + (threadIdx.x % t.I) * stride + (threadIdx.x / t.I) * (t.J / 2);
-        asm volatile("ldmatrix.sync.aligned.m8n8.x4.b16 {%0, %1, %2, %3}, [%4];"
-            : "=r"(xi[0]), "=r"(xi[1]), "=r"(xi[2]), "=r"(xi[3])
-            : "l"(xs));
+        #ifdef GGML_FAIAL_PLAIN_LDMATRIX 
+                xi[0] = xs[0]; 
+                xi[1] = xs[1]; 
+                xi[2] = xs[2]; 
+                xi[3] = xs[3];
+        #else 
+            asm volatile("ldmatrix.sync.aligned.m8n8.x4.b16 {%0, %1, %2, %3}, [%4];"
+                : "=r"(xi[0]), "=r"(xi[1]), "=r"(xi[2]), "=r"(xi[3])
+                : "l"(xs));
+        #endif
 #elif defined(VOLTA_MMA_AVAILABLE)
         ggml_cuda_memcpy_1<4*sizeof(T)>(t.x + 0, xs0 + t.get_i(0)*stride + 0);
         ggml_cuda_memcpy_1<4*sizeof(T)>(t.x + 4, xs0 + t.get_i(4)*stride + 4);
@@ -886,9 +907,17 @@ namespace ggml_cuda_mma {
         const int i = i0 + threadIdx.x % t.I;
         const int j = j0 + (threadIdx.x / t.I) * (t.J / 2);
         int * xi = (int *) t.x;
-        asm volatile("ldmatrix.sync.aligned.m8n8.x4.b16 {%0, %1, %2, %3}, [%4];"
-            : "=r"(xi[0]), "=r"(xi[1]), "=r"(xi[2]), "=r"(xi[3])
-            : "l"(swizzle<true>(tile_base, i, j, stride)));
+        #ifdef GGML_FAIAL_PLAIN_LDMATRIX
+            const int * xs = (const int *) swizzle<true>(tile_base, i, j, stride);
+            xi[0] = xs[0]; 
+            xi[1] = xs[1]; 
+            xi[2] = xs[2]; 
+            xi[3] = xs[3];
+        #else 
+            asm volatile("ldmatrix.sync.aligned.m8n8.x4.b16 {%0, %1, %2, %3}, [%4];"
+                : "=r"(xi[0]), "=r"(xi[1]), "=r"(xi[2]), "=r"(xi[3])
+                : "l"(swizzle<true>(tile_base, i, j, stride)));
+        #endif
 #else
         GGML_UNUSED_VARS(t, tile_base, i0, j0, stride);
         NO_DEVICE_CODE;
@@ -926,9 +955,16 @@ namespace ggml_cuda_mma {
         static_assert(dl == DATA_LAYOUT_I_MAJOR, "bad data layout");
         int * xi = (int *) t.x;
         const int * xs = (const int *) xs0 + (threadIdx.x % t.I) * stride + (threadIdx.x / t.I) * (t.J / 2);
-        asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.b16 {%0, %1, %2, %3}, [%4];"
-            : "=r"(xi[0]), "=r"(xi[2]), "=r"(xi[1]), "=r"(xi[3])
-            : "l"(xs));
+        #ifdef GGML_FAIAL_PLAIN_LDMATRIX 
+                xi[0] = xs[0]; 
+                xi[1] = xs[1]; 
+                xi[2] = xs[2]; 
+                xi[3] = xs[3];
+        #else 
+            asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.b16 {%0, %1, %2, %3}, [%4];"
+                : "=r"(xi[0]), "=r"(xi[2]), "=r"(xi[1]), "=r"(xi[3])
+                : "l"(xs));
+        #endif
 #elif defined(AMD_MFMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
         static_assert(dl == DATA_LAYOUT_I_MAJOR || dl == DATA_LAYOUT_I_MAJOR_MIRRORED, "bad data layout");
         if constexpr (I == 32) {
@@ -968,9 +1004,17 @@ namespace ggml_cuda_mma {
         const int i = i0 + threadIdx.x % t.I;
         const int j = j0 + (threadIdx.x / t.I) * (t.J / 2);
         int * xi = (int *) t.x;
-        asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.b16 {%0, %1, %2, %3}, [%4];"
-            : "=r"(xi[0]), "=r"(xi[2]), "=r"(xi[1]), "=r"(xi[3])
-            : "l"(swizzle<true>(tile_base, i, j, stride)));
+        #ifdef GGML_FAIAL_PLAIN_LDMATRIX
+            const int * xs = (const int *) swizzle<true>(tile_base, i, j, stride);
+            xi[0] = xs[0]; 
+            xi[1] = xs[1]; 
+            xi[2] = xs[2]; 
+            xi[3] = xs[3];
+        #else 
+            asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.b16 {%0, %1, %2, %3}, [%4];"
+                : "=r"(xi[0]), "=r"(xi[2]), "=r"(xi[1]), "=r"(xi[3])
+                : "l"(swizzle<true>(tile_base, i, j, stride)));
+        #endif
 #else
         GGML_UNUSED_VARS(t, tile_base, i0, j0, stride);
         NO_DEVICE_CODE;
