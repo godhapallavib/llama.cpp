@@ -449,22 +449,41 @@ static constexpr __device__ int get_mmvq_mmid_max_batch_for_device() {
 #endif
 }
 
+static constexpr __host__ __device__ int calc_nwarps_generic(int ncols_dst) {
+    switch (ncols_dst) {
+        case 1:
+        case 2:
+        case 3:
+        case 4:
+            return 4;
+        case 5:
+        case 6:
+        case 7:
+        case 8:
+            return 2;
+        default:
+            return 1;
+    }
+}
+
+
 static constexpr __host__ __device__ int calc_nwarps(ggml_type type, int ncols_dst, mmvq_parameter_table_id table_id, bool small_k = false, bool halve_iters = false) {
     if (table_id == MMVQ_PARAMETERS_GENERIC) {
-        switch (ncols_dst) {
-            case 1:
-            case 2:
-            case 3:
-            case 4:
-                return 4;
-            case 5:
-            case 6:
-            case 7:
-            case 8:
-                return 2;
-            default:
-                return 1;
-        }
+        return calc_nwarps_generic(ncols_dst);
+        // switch (ncols_dst) {
+        //     case 1:
+        //     case 2:
+        //     case 3:
+        //     case 4:
+        //         return 4;
+        //     case 5:
+        //     case 6:
+        //     case 7:
+        //     case 8:
+        //         return 2;
+        //     default:
+        //         return 1;
+        // }
     } else if (table_id == MMVQ_PARAMETERS_GCN) {
         switch (ncols_dst) {
             case 1:
@@ -553,7 +572,8 @@ static constexpr __host__ __device__ int calc_nwarps(ggml_type type, int ncols_d
         }
     }
     if (table_id == MMVQ_PARAMETERS_GB10) {
-        const int generic = calc_nwarps(type, ncols_dst, MMVQ_PARAMETERS_GENERIC);
+        // const int generic = calc_nwarps(type, ncols_dst, MMVQ_PARAMETERS_GENERIC);
+        const int generic = calc_nwarps_generic(ncols_dst);
         // Only worth the wider block when it actually retires the K loop in half the trips (Observation)
         if (ncols_dst == 1 && !small_k && halve_iters) {
             switch (type) {
@@ -842,12 +862,12 @@ static __global__ void mul_mat_vec_q(
         }
     }
 
-    if constexpr (!has_fusion) {
-        GGML_UNUSED_VARS(use_gate, use_bias, use_gate_bias, use_scale, use_gate_scale, active_glu, glu_limit, gate_bias, x_bias, x_scale, gate_scale, tmp_gate);
-    }
-    if constexpr (type != GGML_TYPE_NVFP4) {
-        GGML_UNUSED_VARS(use_scale, use_gate_scale, x_scale, gate_scale, x_scales, gate_scales);
-    }
+    // if constexpr (!has_fusion) {
+    //     GGML_UNUSED_VARS(use_gate, use_bias, use_gate_bias, use_scale, use_gate_scale, active_glu, glu_limit, gate_bias, x_bias, x_scale, gate_scale, tmp_gate);
+    // }
+    // if constexpr (type != GGML_TYPE_NVFP4) {
+    //     GGML_UNUSED_VARS(use_scale, use_gate_scale, x_scale, gate_scale, x_scales, gate_scales);
+    // }
 }
 
 // Dedicated MoE multi-token kernel.
@@ -1001,11 +1021,11 @@ static __global__ void mul_mat_vec_q_moe(
         dst[channel_dst*stride_channel_dst + token_idx*stride_col_dst + row0 + threadIdx.x] = result;
     }
 
-    if constexpr (!has_fusion) {
-        GGML_UNUSED_VARS(use_gate, tmp_gate, vgate, x_bias, gate_bias, active_glu, glu_limit, x_scale, gate_scale);
-    } else if constexpr (type != GGML_TYPE_NVFP4) {
-        GGML_UNUSED_VARS(x_scale, gate_scale);
-    }
+    // if constexpr (!has_fusion) {
+    //     GGML_UNUSED_VARS(use_gate, tmp_gate, vgate, x_bias, gate_bias, active_glu, glu_limit, x_scale, gate_scale);
+    // } else if constexpr (type != GGML_TYPE_NVFP4) {
+    //     GGML_UNUSED_VARS(x_scale, gate_scale);
+    // }
 }
 
 template<ggml_type type>
