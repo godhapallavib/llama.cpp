@@ -1039,7 +1039,7 @@ static __device__ __forceinline__ float vec_dot_q6_K_q8_1(
         d8[i] = __low2float(bq8_1[bq8_offset + 2*i].ds);
     }
 
-    return vec_dot_q6_K_q8_1_impl_mmvq(vl, vh, u, scales, bq6_K->d, d8);
+    return vec_dot_q6_K_q8_1_impl_mmvq(vl, vh, u, scales, __half2float(bq6_K->d), d8);
 }
 
 #define VDR_IQ2_XXS_Q8_1_MMVQ 2

@@ -632,9 +632,21 @@ static __global__ void mul_mat_vec_q(
 
     constexpr int qk  = ggml_cuda_type_traits<type>::qk;
     constexpr int qi  = ggml_cuda_type_traits<type>::qi;
-    constexpr int vdr = get_vdr_mmvq(type);
+    // constexpr int vdr = get_vdr_mmvq(type);
+    #ifdef GGML_FAIAL_MMVQ_PARAMS
+    // faial-gen evaluates helpers with several returns as their last return, so give it the values directly
+        constexpr int vdr = type == GGML_TYPE_Q4_K ? VDR_Q4_K_Q8_1_MMVQ : type == GGML_TYPE_Q6_K ? VDR_Q6_K_Q8_1_MMVQ : get_vdr_mmvq(type);
+    #else
+        constexpr int vdr = get_vdr_mmvq(type);
+    #endif
     constexpr mmvq_parameter_table_id table_id = get_device_table_id();
-    constexpr int nwarps = calc_nwarps(type, ncols_dst, table_id, small_k, halve_iters);
+    // constexpr int nwarps = calc_nwarps(type, ncols_dst, table_id, small_k, halve_iters);
+    #ifdef GGML_FAIAL_MMVQ_PARAMS
+        constexpr int nwarps = table_id == MMVQ_PARAMETERS_TURING && ncols_dst == 1 && (type == GGML_TYPE_Q4_K || type == GGML_TYPE_Q6_K) ?
+            2 : calc_nwarps(type, ncols_dst, table_id, small_k, halve_iters);
+    #else
+        constexpr int nwarps = calc_nwarps(type, ncols_dst, table_id, small_k, halve_iters);
+    #endif
     constexpr int rows_per_cuda_block = calc_rows_per_block(ncols_dst, table_id, small_k, nwarps);
     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
 
@@ -768,12 +780,22 @@ static __global__ void mul_mat_vec_q(
         for (int j = 0; j < ncols_dst; ++j) {
 #pragma unroll
             for (int i = 0; i < rows_per_cuda_block; ++i) {
-                tmp[j][i] += vec_dot_q_cuda(
-                    vx, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                if constexpr (type == GGML_TYPE_Q4_K) {
+                    tmp[j][i] += vec_dot_q4_K_q8_1(vx, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                } else if constexpr (type == GGML_TYPE_Q6_K) {
+                    tmp[j][i] += vec_dot_q6_K_q8_1(vx, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                } else {
+                    tmp[j][i] += vec_dot_q_cuda(vx, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                }
                 if constexpr (has_fusion) {
                     if (use_gate) {
-                        tmp_gate[j][i] += vec_dot_q_cuda(
-                            vgate, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                        if constexpr (type == GGML_TYPE_Q4_K) {
+                            tmp_gate[j][i] += vec_dot_q4_K_q8_1(vgate, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                        } else if constexpr (type == GGML_TYPE_Q6_K) {
+                            tmp_gate[j][i] += vec_dot_q6_K_q8_1(vgate, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                        } else {
+                            tmp_gate[j][i] += vec_dot_q_cuda(vgate, &y[j*stride_col_y + kby], kbx_offset + i*stride_row_x + kbx, kqs);
+                        }
                     }
                 }
             }
