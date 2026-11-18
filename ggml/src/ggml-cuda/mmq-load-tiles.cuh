@@ -1006,7 +1006,8 @@ template <ggml_type type, int J, bool fallback> static __device__ __forceinline_
         const block_q6_K * bxi = (const block_q6_K *) x + kbx0 + i*stride;
 
 #if defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
-        x_df[i*sram_stride]                     = bxi->d;
+        // x_df[i*sram_stride]                     = bxi->d;
+        x_df[i*sram_stride]                     = __half2float(bxi->d);
 #else
         x_df[i*(MMQ_TILE_NE_K/QI6_K) + i/QI6_K] = bxi->d;
 #endif // defined(AMD_MFMA_AVAILABLE) || defined(TURING_MMA_AVAILABLE) || defined(AMD_WMMA_AVAILABLE)
